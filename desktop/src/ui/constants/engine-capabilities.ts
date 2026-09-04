@@ -43,5 +43,29 @@ export const EngineCapabilities: Record<EngineType, EngineCaps> = {
         // server. Deleting therefore interrupts inference and needs a warning.
         restartsOnModelDelete: true,
         engineHub: { label: 'LM Studio', url: 'https://lmstudio.ai/models' }
+    },
+    'llama-cpp': {
+        hasExpiry: false,
+        // llama.cpp's `unload_model` action (POST /models/unload) is a real
+        // eject path. The router reports per-model status, but the manifest
+        // exposes no loaded_models endpoint, so ModelRow.tsx cannot know which
+        // models are resident — Eject is offered unconditionally.
+        hasEject: true,
+        // Adopt-only: the manifest ships no install block (PAIR adopts a
+        // user-built llama-server, e.g. with ROCm on Strix Halo). Empty keeps
+        // it out of the welcome installer.
+        hasInstall: [],
+        hasEnginePort: true,
+        hasInstallPath: false,
+        hasProxyWebUI: false,
+        hasPreferredNode: false,
+        hasCrashAlert: false,
+        hasModelSearchOnlyWhenRunning: true,
+        modelOpsWhenStopped: false,
+        hasDeleteModel: true,
+        // llama-server in router mode scans --models-dir at startup and exposes
+        // no rescan, so nvpair-engine-manager's delete_model restarts the
+        // server. Deleting therefore interrupts inference and needs a warning.
+        restartsOnModelDelete: true
     }
 }

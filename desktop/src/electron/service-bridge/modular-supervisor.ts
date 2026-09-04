@@ -207,11 +207,11 @@ function normalizeLogLevel(value: string | undefined): ModularLogLevel {
  * placeholder unresolved and the engine-manager rejects the call.
  */
 function pullModelParams(engineManagerEngine: string, model: string): JsonObject {
-    return engineManagerEngine === 'lmstudio' ? { model } : { name: model }
+    return engineManagerEngine === 'ollama' ? { name: model } : { model }
 }
 
 function deleteModelParams(engineManagerEngine: string, model: string): JsonObject {
-    return engineManagerEngine === 'lmstudio' ? { model } : { name: model }
+    return engineManagerEngine === 'ollama' ? { name: model } : { model }
 }
 
 /**
@@ -292,19 +292,24 @@ function emptyLocalEngineBridge(): LocalEngineBridge {
 
 /** Translate our `EngineType` into the engine-manager's engine id. */
 function engineManagerId(engine: ProxyEngine): string {
-    return engine === 'lm-studio' ? 'lmstudio' : engine
+    if (engine === 'lm-studio') return 'lmstudio'
+    if (engine === 'llama-cpp') return 'llamacpp'
+    return engine
 }
 
 /** Translate an engine-manager engine id into a proxy engine, or null. */
 function proxyEngineFromManagerId(id: string): ProxyEngine | null {
     if (id === 'ollama') return 'ollama'
     if (id === 'lmstudio') return 'lm-studio'
+    if (id === 'llamacpp') return 'llama-cpp'
     return null
 }
 
 /** The broker relay namespace fronting an engine's reverse proxy. */
 function proxyRelayPrefix(engine: ProxyEngine): string {
-    return engine === 'ollama' ? 'proxy' : 'lmstudio-proxy'
+    if (engine === 'ollama') return 'proxy'
+    if (engine === 'lm-studio') return 'lmstudio-proxy'
+    return 'llamacpp-proxy'
 }
 
 /**
@@ -315,11 +320,11 @@ function proxyRelayPrefix(engine: ProxyEngine): string {
  *
  * - The `nvpair-ui-broker` is the **only** Electron-spawned binary and is itself the
  *   parent of every broker-owned worker (`ollama-proxy`, `lmstudio-proxy`,
- *   `nvpair-node-scanner`, `nvpair-node-info`, `nvpair-workload-manager`,
+ *   `llamacpp-proxy`, `nvpair-node-scanner`, `nvpair-node-info`, `nvpair-workload-manager`,
  *   `nvpair-cluster-manager`, `nvpair-node-settings`, `nvpair-manual-nodes`,
  *   `nvpair-engine-manager`, `nvpair-errors`, `nvpair-job-scheduler`). Electron passes their resolved paths to
  *   the broker (see `brokerStartupArgs`) and reaches each through a broker relay:
- *   `proxy:` / `lmstudio-proxy:` for the two engine proxies, `engine:` for the
+ *   `proxy:` / `lmstudio-proxy:` / `llamacpp-proxy:` for the three engine proxies, `engine:` for the
  *   engine-manager, `errors:` for the error pipeline, `node/*` for manual nodes,
  *   `settings/*` and `cluster:` for the rest. Local inference jobs arrive on the
  *   broker's `workloads:subscribe` stream.
@@ -827,6 +832,7 @@ class ModularSupervisor {
         passPath('--node-info-path', 'node-info')
         passPath('--proxy-path', 'proxy')
         passPath('--lmstudio-proxy-path', 'lmstudio-proxy')
+        passPath('--llamacpp-proxy-path', 'llamacpp-proxy')
         passPath('--workload-manager-path', 'workload-manager')
         passPath('--cluster-manager-path', 'cluster-manager')
         passPath('--settings-path', 'node-settings')
@@ -878,6 +884,7 @@ class ModularSupervisor {
         await subscribe('discovery:subscribe', 'subscribe to broker discovery')
         await subscribe('proxy:subscribe', 'subscribe to broker ollama-proxy relay')
         await subscribe('lmstudio-proxy:subscribe', 'subscribe to broker lmstudio-proxy relay')
+        await subscribe('llamacpp-proxy:subscribe', 'subscribe to broker llamacpp-proxy relay')
         // Engine events are opt-in and replay no baseline — subscribe then hydrate.
         await subscribe('engine:subscribe', 'subscribe to broker engine relay')
         await subscribe('workloads:subscribe', 'subscribe to broker workloads stream')
@@ -1271,7 +1278,9 @@ class ModularSupervisor {
                 ? 'ollama'
                 : event.source === 'lmstudio-proxy'
                   ? 'lm-studio'
-                  : null
+                  : event.source === 'llamacpp-proxy'
+                    ? 'llama-cpp'
+                    : null
         if (proxyEngine && event.method === 'ready') {
             // A (re)bound proxy starts with an empty manual-node set, so forget
             // what we think we bridged and re-push the local node if applicable.
@@ -1316,13 +1325,20 @@ class ModularSupervisor {
         this.readinessWaiters.clear()
     }
 
-    /** Rewrite broker `proxy:`/`lmstudio-proxy:` relay frames into proxy-source events. */
+    /** Rewrite broker `proxy:`/`lmstudio-proxy:`/`llamacpp-proxy:` relay frames into proxy-source events. */
     private normalizeBrokerProxy(notification: JsonRpcNotification): JsonRpcNotification {
         if (notification.source !== 'broker') return notification
         if (notification.method.startsWith('lmstudio-proxy:')) {
             return {
                 source: 'lmstudio-proxy',
                 method: notification.method.slice('lmstudio-proxy:'.length),
+                params: notification.params
+            }
+        }
+        if (notification.method.startsWith('llamacpp-proxy:')) {
+            return {
+                source: 'llamacpp-proxy',
+                method: notification.method.slice('llamacpp-proxy:'.length),
                 params: notification.params
             }
         }

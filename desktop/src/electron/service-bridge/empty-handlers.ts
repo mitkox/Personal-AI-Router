@@ -84,7 +84,9 @@ async function getClusterMembers(): Promise<ClusterNode[]> {
 
 /** Map our `EngineType` onto the `nvpair-engine-manager` engine identifier. */
 export function engineManagerEngineName(engineType: EngineType): string {
-    return engineType === 'lm-studio' ? 'lmstudio' : engineType
+    if (engineType === 'lm-studio') return 'lmstudio'
+    if (engineType === 'llama-cpp') return 'llamacpp'
+    return engineType
 }
 
 /** The proxy engine for a wire `EngineType`, or null for loopback-only engines. */
@@ -533,8 +535,9 @@ function routeEngineManagerCommand(payload: WsInvokeRequest<'engine:command'>): 
             // first-class load action, so we POST its `run_model` HTTP action
             // (`/api/generate`) with no prompt: Ollama loads the model into VRAM
             // and returns immediately (`done_reason: "load"`) without generating.
-            // LM Studio declares a real `load_model` CLI action (`lms load`).
-            // Both require the engine running (HTTP/CLI action), matching the
+            // LM Studio declares a real `load_model` CLI action (`lms load`), and
+            // llama.cpp declares `load_model` as POST /models/load. Both require
+            // the engine running (HTTP/CLI action), matching the
             // disabled rule in ModelRow.tsx.
             // See docs/services-parity.md#models.
             if (payload.model) {
