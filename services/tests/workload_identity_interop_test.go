@@ -360,6 +360,39 @@ func TestWorkloadManagerRehydratesRecentTerminalOnRestart(t *testing.T) {
 
 var wmStartedPidRe = regexp.MustCompile(`workload-manager started.*\bpid=(\d+)`)
 
+// waitLlamaCppProxyReady polls llamacpp-proxy:get-status until the llama.cpp
+// proxy reports ready and returns its bound port (mirrors waitLMStudioProxyReady).
+func waitLlamaCppProxyReady(t *testing.T, stdin io.Writer, msgs <-chan jsonrpc.Message, timeout time.Duration) int {
+	t.Helper()
+	id := 9600
+	writeRawFrame(t, stdin, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"llamacpp-proxy:get-status"}`, id))
+	deadline := time.After(timeout)
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case msg, ok := <-msgs:
+			if !ok {
+				t.Fatal("broker stream closed waiting for llamacpp-proxy:get-status")
+			}
+			if msg.ID != nil && msg.Method == "" {
+				var st struct {
+					Ready bool `json:"ready"`
+					Port  int  `json:"port"`
+				}
+				if json.Unmarshal(msg.Result, &st) == nil && st.Ready {
+					return st.Port
+				}
+			}
+		case <-tick.C:
+			id++
+			writeRawFrame(t, stdin, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"llamacpp-proxy:get-status"}`, id))
+		case <-deadline:
+			t.Fatalf("timed out (%s) waiting for llamacpp-proxy to become ready", timeout)
+		}
+	}
+}
+
 // waitLMStudioProxyReady polls lmstudio-proxy:get-status until the LM Studio
 // proxy reports ready and returns its bound port (mirrors waitProxyReady).
 func waitLMStudioProxyReady(t *testing.T, stdin io.Writer, msgs <-chan jsonrpc.Message, timeout time.Duration) int {

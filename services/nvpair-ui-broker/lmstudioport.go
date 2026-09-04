@@ -53,7 +53,16 @@ func (b *Broker) markLMStudioPortReady() {
 }
 
 func (b *Broker) waitForManagedPortOwnership(ctx context.Context) bool {
-	for _, ready := range []<-chan struct{}{b.ollamaPortReady, b.lmstudioPortReady} {
+	// A nil gate is already satisfied: tests build partial Brokers that only
+	// configure the gates they exercise (mirroring *PortOwnershipPending,
+	// which reports false for a nil channel).
+	var gates []<-chan struct{}
+	for _, ready := range []<-chan struct{}{b.ollamaPortReady, b.lmstudioPortReady, b.llamacppPortReady} {
+		if ready != nil {
+			gates = append(gates, ready)
+		}
+	}
+	for _, ready := range gates {
 		select {
 		case <-ctx.Done():
 			return false
@@ -64,7 +73,10 @@ func (b *Broker) waitForManagedPortOwnership(ctx context.Context) bool {
 }
 
 func (b *Broker) managedPortOwnershipReady() bool {
-	for _, ready := range []<-chan struct{}{b.ollamaPortReady, b.lmstudioPortReady} {
+	for _, ready := range []<-chan struct{}{b.ollamaPortReady, b.lmstudioPortReady, b.llamacppPortReady} {
+		if ready == nil {
+			continue
+		}
 		select {
 		case <-ready:
 		default:
