@@ -24,12 +24,12 @@ type proxyNode struct {
 	Port int    `json:"port"`
 }
 
-// proxyEngine is one of the two reverse proxies the broker fronts. Both
-// speak the same routing/failover contract; only the JSON-RPC prefix and
+// proxyEngine is one of the reverse proxies the broker fronts. All speak
+// the same routing/failover contract; only the JSON-RPC prefix and
 // label differ.
 type proxyEngine struct {
-	label    string // "Ollama" / "LM Studio"
-	prefix   string // "proxy" / "lmstudio-proxy"
+	label    string // "Ollama" / "LM Studio" / "llama.cpp"
+	prefix   string // "proxy" / "lmstudio-proxy" / "llamacpp-proxy"
 	ready    bool
 	port     int
 	selected string
@@ -37,7 +37,7 @@ type proxyEngine struct {
 	table    table.Model
 }
 
-// proxiesView shows both reverse proxies: per-engine status (ready/port/
+// proxiesView shows all reverse proxies: per-engine status (ready/port/
 // selected node) and the focused engine's discovered upstreams, with
 // actions to select a node and set the listen port.
 type proxiesView struct {
@@ -92,6 +92,7 @@ func newProxiesView(client *rpc.Client) *proxiesView {
 		engines: []*proxyEngine{
 			{label: "Ollama", prefix: "proxy", table: newTable(nil)},
 			{label: "LM Studio", prefix: "lmstudio-proxy", table: newTable(nil)},
+			{label: "llama.cpp", prefix: "llamacpp-proxy", table: newTable(nil)},
 		},
 	}
 	return v
@@ -212,12 +213,13 @@ func (v *proxiesView) Update(msg tea.Msg) tea.Cmd {
 
 func (v *proxiesView) handleNotification(msg *rpc.Message) tea.Cmd {
 	idx := -1
-	switch {
-	case strings.HasPrefix(msg.Method, "lmstudio-proxy:"):
-		idx = 1
-	case strings.HasPrefix(msg.Method, "proxy:"):
-		idx = 0
-	default:
+	for i, e := range v.engines {
+		if strings.HasPrefix(msg.Method, e.prefix+":") {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
 		return nil
 	}
 	if strings.HasSuffix(msg.Method, ":ready") {
