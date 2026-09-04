@@ -1,0 +1,60 @@
+{
+  "engine": "llamacpp",
+  "display_name": "llama.cpp",
+  "manifest_version": 1,
+  "runtime": {
+    "args": ["--host", "{host}", "--port", "{port}", "--models-dir", "{models_dir}", "--device", "ROCm0", "--embeddings"],
+    "bind": "127.0.0.1",
+    "port": 8080,
+    "ready": { "http": "http://127.0.0.1:{port}/health", "status": 200, "timeout_s": 120 },
+    "stop": { "signal": "term", "grace_s": 5 },
+    "health": { "http": "http://127.0.0.1:{port}/health", "status": 200, "interval_s": 10 }
+  },
+  "platforms": {
+    "linux/amd64": {
+      "detect": [
+        "{install_dir}/bin/llama-server",
+        "/usr/local/bin/llama-server",
+        "~/llama.cpp/build/bin/llama-server",
+        "~/dev/llama.cpp/build/bin/llama-server"
+      ],
+      "runtime": { "bin": "{install_dir}/bin/llama-server" }
+    },
+    "linux/arm64": {
+      "detect": [
+        "{install_dir}/bin/llama-server",
+        "/usr/local/bin/llama-server",
+        "~/llama.cpp/build/bin/llama-server",
+        "~/dev/llama.cpp/build/bin/llama-server"
+      ],
+      "runtime": { "bin": "{install_dir}/bin/llama-server" }
+    }
+  },
+  "actions": {
+    "list_models": {
+      "description": "List GGUF models in the router models directory (llama-server router mode).",
+      "http": { "method": "GET", "path": "/v1/models" },
+      "result": { "array": "data", "field": "id" }
+    },
+    "load_model": {
+      "description": "Load a model by alias into memory (params: {\"model\": \"<alias>\"}).",
+      "http": { "method": "POST", "path": "/models/load", "body_schema": { "model": "string" } }
+    },
+    "unload_model": {
+      "description": "Unload a model from memory (params: {\"model\": \"<alias>\"}).",
+      "http": { "method": "POST", "path": "/models/unload", "body_schema": { "model": "string" } }
+    },
+    "delete_model": {
+      "description": "Delete a GGUF model file from the router models directory and restart the server (params: {\"model\": \"<alias>\"}). The router scans the directory at startup and offers no rescan, so a running server keeps advertising the deleted model until it restarts.",
+      "remove_path": {
+        "root": "{models_dir}",
+        "path": "{models_dir}/{model}"
+      },
+      "restart_after": true
+    },
+    "chat": {
+      "description": "OpenAI-compatible chat completion (params: {\"model\": \"<alias>\", \"messages\": [...]}).",
+      "http": { "method": "POST", "path": "/v1/chat/completions", "body_schema": { "model": "string", "messages": "array" } }
+    }
+  }
+}

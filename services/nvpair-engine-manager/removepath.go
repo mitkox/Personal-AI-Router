@@ -15,6 +15,27 @@ func lmstudioModelsDir() string {
 	return expandPath("~/.lmstudio/models")
 }
 
+// llamacppModelsDir is the default GGUF directory served by llama-server in
+// router mode (--models-dir). Adopt-only engine: PAIR never populates it, it
+// only serves what is already there.
+func llamacppModelsDir() string {
+	return expandPath("~/.llama.cpp/models")
+}
+
+// engineModelsDir returns the default on-disk model directory for engines
+// that serve loose model files (used for the {models_dir} placeholder). It
+// returns "" for engines without one; callers treat "" as "no directory".
+func engineModelsDir(engine string) string {
+	switch engine {
+	case "lmstudio":
+		return lmstudioModelsDir()
+	case "llamacpp":
+		return llamacppModelsDir()
+	default:
+		return ""
+	}
+}
+
 // safeRemoveUnderRoot deletes target after verifying it resolves under root.
 // Both paths are cleaned; symlinks on target are evaluated before the confinement
 // check so a path cannot escape the allowed root via symlink tricks.

@@ -169,9 +169,17 @@ func (e *Executor) doStart(ctx context.Context, st *engineState, engine string, 
 		"host":        effectiveBind(rt.Bind, opts.Bind),
 		"port":        strconv.Itoa(port),
 		"install_dir": st.installDir,
+		"models_dir":  engineModelsDir(engine),
 	}
 	if rt.CLI != "" {
 		vars["cli"] = expandPath(rt.CLI)
+	}
+	if dir := engineModelsDir(engine); dir != "" {
+		// Engines serving loose model files (llama-server --models-dir)
+		// need the directory to exist before the binary starts.
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create models dir: %w", err)
+		}
 	}
 
 	st.mu.Lock()
