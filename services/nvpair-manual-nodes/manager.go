@@ -115,6 +115,12 @@ type ManualNodeStatus struct {
 	LMStudioUp     bool        `json:"lmstudio_up"`
 	LMStudioPort   int         `json:"lmstudio_port"`
 	LMStudioModels []string    `json:"lmstudio_models,omitempty"`
+	// llama.cpp (llama-server router mode) is probed on its default
+	// OpenAI-API port the same way, so a manually-added node running
+	// llama-server can be bridged into llamacpp-proxy.
+	LlamaCppUp     bool     `json:"llamacpp_up"`
+	LlamaCppPort   int      `json:"llamacpp_port"`
+	LlamaCppModels []string `json:"llamacpp_models,omitempty"`
 	NodeInfoUp     bool        `json:"node_info_up"`
 	NodeInfoPort   int         `json:"node_info_port"`
 	TLSEnabled     bool        `json:"tls_enabled,omitempty"`
@@ -253,6 +259,7 @@ func (m *Manager) probeNode(entry ManualEntry) {
 
 	ollamaUp, ollamaModels := m.probeOllama(addr, 11434)
 	lmStudioUp, lmStudioModels := m.probeLMStudio(addr, lmStudioPort)
+	llamaCppUp, llamaCppModels := m.probeLlamaCpp(addr, llamaCppPort)
 
 	// Pick scheme + port + client based on the entry's TLS hint.
 	// The operator decides which scheme this manual node uses; we
@@ -290,6 +297,9 @@ func (m *Manager) probeNode(entry ManualEntry) {
 		LMStudioUp:     lmStudioUp,
 		LMStudioPort:   lmStudioPort,
 		LMStudioModels: lmStudioModels,
+		LlamaCppUp:     llamaCppUp,
+		LlamaCppPort:   llamaCppPort,
+		LlamaCppModels: llamaCppModels,
 		NodeInfoUp:     nodeInfoUp,
 		NodeInfoPort:   nodeInfoPort,
 		TLSEnabled:     entry.TLSPort > 0,
@@ -302,7 +312,7 @@ func (m *Manager) probeNode(entry ManualEntry) {
 		HostUUID:       info.HostUUID,
 	}
 
-	reachable := newStatus.OllamaUp || newStatus.LMStudioUp || newStatus.NodeInfoUp
+	reachable := newStatus.OllamaUp || newStatus.LMStudioUp || newStatus.LlamaCppUp || newStatus.NodeInfoUp
 
 	m.mu.Lock()
 	tn, exists := m.nodes[id]
@@ -331,10 +341,12 @@ func (m *Manager) probeNode(entry ManualEntry) {
 
 	changed := prev.OllamaUp != newStatus.OllamaUp ||
 		prev.LMStudioUp != newStatus.LMStudioUp ||
+		prev.LlamaCppUp != newStatus.LlamaCppUp ||
 		prev.NodeInfoUp != newStatus.NodeInfoUp ||
 		prev.HostUUID != newStatus.HostUUID ||
 		!sliceEqual(prev.OllamaModels, newStatus.OllamaModels) ||
 		!sliceEqual(prev.LMStudioModels, newStatus.LMStudioModels) ||
+		!sliceEqual(prev.LlamaCppModels, newStatus.LlamaCppModels) ||
 		!gpusEqual(prev.GPUs, newStatus.GPUs) ||
 		!cpuEqual(prev.CPU, newStatus.CPU) ||
 		!memoryEqual(prev.Memory, newStatus.Memory) ||
@@ -403,22 +415,28 @@ func probeFailedID(nodeID string) string {
 // manager (which only governs the local engine).
 const lmStudioPort = 1234
 
-// probeLMStudio checks LM Studio's OpenAI-compatible server on addr:port. A
-// single GET /v1/models doubles as the liveness check and the model list (the
-// response is {"data":[{"id":"..."}],...}). Returns whether it is up and the
-// model ids it serves.
-func (m *Manager) probeLMStudio(addr string, port int) (bool, []string) {
+// llamaCppPort is llama-server's default OpenAI-API server port, probed the
+// same way. Note the ambiguity is shared with LM Studio: a remote PAIR node's
+// llamacpp-proxy facade also serves an aggregated /v1/models on this port, so
+// a manual node running PAIR bridges into routing through its proxy — the same
+// accepted behavior as the lmstudio probe.
+const llamaCppPort = 8080
+
+// probeOpenAIModels is the shared GET /v1/models liveness + inventory probe
+// for OpenAI-compatible engines (LM Studio, llama-server router mode). The
+// response shape is identical ({"data":[{"id":"..."}],...}).
+func (m *Manager) probeOpenAIModels(label, addr string, port int) (bool, []string) {
 	url := "http://" + net.JoinHostPort(addr, strconv.Itoa(port)) + "/v1/models"
 	start := time.Now()
 	resp, err := m.client.Get(url)
 	if err != nil {
-		slog.Debug("manual probe lmstudio failed",
+		slog.Debug("manual probe "+label+" failed",
 			"addr", addr, "port", port, "duration_ms", time.Since(start).Milliseconds(), "err", err)
 		return false, nil
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		slog.Debug("manual probe lmstudio non-OK",
+		slog.Debug("manual probe "+label+" non-OK",
 			"addr", addr, "port", port, "status", resp.StatusCode,
 			"duration_ms", time.Since(start).Milliseconds())
 		return false, nil
@@ -430,7 +448,7 @@ func (m *Manager) probeLMStudio(addr string, port int) (bool, []string) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		// Reachable, but the model list didn't parse — still report it up.
-		slog.Debug("manual probe lmstudio up (models parse failed)",
+		slog.Debug("manual probe "+label+" up (models parse failed)",
 			"addr", addr, "port", port, "err", err)
 		return true, nil
 	}
@@ -440,10 +458,25 @@ func (m *Manager) probeLMStudio(addr string, port int) (bool, []string) {
 			models = append(models, d.ID)
 		}
 	}
-	slog.Debug("manual probe lmstudio up",
+	slog.Debug("manual probe "+label+" up",
 		"addr", addr, "port", port, "models", len(models),
 		"duration_ms", time.Since(start).Milliseconds())
 	return true, models
+}
+
+// probeLMStudio checks LM Studio's OpenAI-compatible server on addr:port. A
+// single GET /v1/models doubles as the liveness check and the model list (the
+// response is {"data":[{"id":"..."}],...}). Returns whether it is up and the
+// model ids it serves.
+func (m *Manager) probeLMStudio(addr string, port int) (bool, []string) {
+	return m.probeOpenAIModels("lmstudio", addr, port)
+}
+
+// probeLlamaCpp checks llama-server's OpenAI-compatible server on addr:port,
+// identically to the LM Studio probe: llama-server in router mode serves the
+// same GET /v1/models shape ({"data":[{"id":"<alias>"}],...}).
+func (m *Manager) probeLlamaCpp(addr string, port int) (bool, []string) {
+	return m.probeOpenAIModels("llamacpp", addr, port)
 }
 
 func (m *Manager) probeOllama(addr string, port int) (bool, []string) {
