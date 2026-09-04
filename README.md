@@ -49,6 +49,12 @@ before assuming a node can serve a model. A node only becomes a candidate for a
 request once it is actually running a compatible engine, and PAIR prefers the
 nodes it already knows hold the model.
 
+**On AMD Strix Halo** (Ryzen AI Max, gfx1151), use Ollama with the ROCm v7
+driver or llama.cpp: adopt your own ROCm-enabled `llama-server` build and serve
+GGUFs in router mode — see [Managing Engines](docs/engine-lifecycle.mdx#llamacpp-adopt-only-linux).
+LM Studio's bundled ROCm runtime does not support gfx1151 yet; its Vulkan
+backend is the working fallback there.
+
 ## Quick start
 
 Download a released build and use the desktop application. That is the path we
