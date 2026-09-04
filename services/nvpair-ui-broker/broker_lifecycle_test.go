@@ -43,6 +43,7 @@ func TestEngineAvailabilityWaitsForBothProxyOutcomes(t *testing.T) {
 	b := &Broker{
 		ollamaPortReady:   make(chan struct{}),
 		lmstudioPortReady: make(chan struct{}),
+		llamacppPortReady: make(chan struct{}),
 	}
 	b.setEngineMgr(engine)
 
@@ -53,7 +54,7 @@ func TestEngineAvailabilityWaitsForBothProxyOutcomes(t *testing.T) {
 			restore <- msg.Method
 		}
 	}()
-	advertised := make(chan string, 2)
+	advertised := make(chan string, 3)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan bool, 1)
@@ -62,6 +63,7 @@ func TestEngineAvailabilityWaitsForBothProxyOutcomes(t *testing.T) {
 			ctx,
 			func(context.Context) { advertised <- "ollama" },
 			func(context.Context) { advertised <- "lmstudio" },
+			func(context.Context) { advertised <- "llamacpp" },
 		)
 	}()
 
@@ -81,6 +83,14 @@ func TestEngineAvailabilityWaitsForBothProxyOutcomes(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 	close(b.lmstudioPortReady)
+	select {
+	case got := <-restore:
+		t.Fatalf("restore %q ran before llama.cpp proxy outcome", got)
+	case got := <-advertised:
+		t.Fatalf("%s advertising ran before llama.cpp proxy outcome", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(b.llamacppPortReady)
 
 	select {
 	case got := <-restore:
@@ -88,15 +98,15 @@ func TestEngineAvailabilityWaitsForBothProxyOutcomes(t *testing.T) {
 			t.Fatalf("restore method = %q, want %q", got, restoreEnabledEnginesMethod)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("enabled-engine restore did not run after both proxy outcomes")
+		t.Fatal("enabled-engine restore did not run after all proxy outcomes")
 	}
 	seen := map[string]bool{}
-	for len(seen) < 2 {
+	for len(seen) < 3 {
 		select {
 		case got := <-advertised:
 			seen[got] = true
 		case <-time.After(2 * time.Second):
-			t.Fatalf("advertising did not start for both engines: %v", seen)
+			t.Fatalf("advertising did not start for all engines: %v", seen)
 		}
 	}
 	if !<-done {

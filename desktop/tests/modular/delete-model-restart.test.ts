@@ -10,8 +10,9 @@ import type { EngineType } from '@/shared/types/engines'
 /**
  * Deleting a model restarts the engine only where the engine cannot
  * see the deletion any other way — LM Studio, which answers `/v1/models` from an
- * index built at startup and exposes no rescan. Two independent decisions have
- * to agree on that, and they live in different languages:
+ * index built at startup and exposes no rescan, and llama.cpp in router mode,
+ * which scans `--models-dir` at startup and exposes no rescan. Two independent
+ * decisions have to agree on that, and they live in different languages:
  *
  * - `restart_after` in the engine-manager manifest decides whether the *backend*
  *   bounces the engine.
@@ -24,10 +25,11 @@ import type { EngineType } from '@/shared/types/engines'
 
 const MANIFEST_DIR = path.resolve(process.cwd(), '../services/nvpair-engine-manager/manifests')
 
-/** Manifest engine ids differ from our `EngineType` for LM Studio only. */
+/** Manifest engine ids differ from our `EngineType` for LM Studio and llama.cpp. */
 const ENGINE_TYPE_BY_MANIFEST_ID: Record<string, EngineType> = {
     ollama: 'ollama',
-    lmstudio: 'lm-studio'
+    lmstudio: 'lm-studio',
+    llamacpp: 'llama-cpp'
 }
 
 interface ManifestAction {
@@ -46,14 +48,14 @@ function readManifests(): Manifest[] {
         .map(name => JSON.parse(fs.readFileSync(path.join(MANIFEST_DIR, name), 'utf8')) as Manifest)
 }
 
-describe('delete-model restart is scoped to LM Studio', () => {
-    it('only LM Studio declares restart_after, and only on delete_model', () => {
+describe('delete-model restart is scoped to LM Studio and llama.cpp', () => {
+    it('only LM Studio and llama.cpp declare restart_after, and only on delete_model', () => {
         const declaring = readManifests().flatMap(m =>
             Object.entries(m.actions ?? {})
                 .filter(([, action]) => action.restart_after === true)
                 .map(([name]) => `${m.engine}.${name}`)
         )
-        expect(declaring).toEqual(['lmstudio.delete_model'])
+        expect(declaring).toEqual(['llamacpp.delete_model', 'lmstudio.delete_model'])
     })
 
     it('Ollama deletes without a restart and therefore without a confirmation', () => {

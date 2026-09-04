@@ -304,6 +304,17 @@ func (b *Broker) handleLMStudioProxySetPort(msg *Message) {
 	b.relayToLMStudioProxy(msg)
 }
 
+func (b *Broker) handleLlamaCppProxySetPort(msg *Message) {
+	var params struct {
+		Port int `json:"port"`
+	}
+	if json.Unmarshal(msg.Params, &params) == nil &&
+		b.rejectOllamaHostAliasPort(msg, params.Port, "the llama.cpp proxy") {
+		return
+	}
+	b.relayToLlamaCppProxy(msg)
+}
+
 // needsOllamaPortGate reports the client requests that can probe and adopt the
 // configured Ollama port. While :11434 is changing from backend to facade,
 // those probes must wait or they can mistake the proxy for a local engine.

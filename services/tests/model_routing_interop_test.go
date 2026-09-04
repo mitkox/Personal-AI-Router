@@ -39,8 +39,8 @@ func newRoutingUpstream(t *testing.T, status int) *routingUpstream {
 }
 
 func TestStrictModelRoutingAcrossProcesses(t *testing.T) {
-	if portBusy(11435) || portBusy(1234) {
-		t.Skip("ollama-proxy (11435) or lmstudio-proxy (1234) default port already in use; skipping")
+	if portBusy(11435) || portBusy(1234) || portBusy(8080) {
+		t.Skip("ollama-proxy (11435), lmstudio-proxy (1234), or llamacpp-proxy (8080) default port already in use; skipping")
 	}
 
 	owner404 := newRoutingUpstream(t, http.StatusNotFound)
@@ -50,6 +50,7 @@ func TestStrictModelRoutingAcrossProcesses(t *testing.T) {
 	stdin, msgs, stderr, cleanup := startBrokerWith(t,
 		"--proxy-path", proxyBin,
 		"--lmstudio-proxy-path", lmstudioProxyBin,
+		"--llamacpp-proxy-path", llamacppProxyBin,
 	)
 	t.Cleanup(cleanup)
 	go func() {
@@ -60,6 +61,7 @@ func TestStrictModelRoutingAcrossProcesses(t *testing.T) {
 	waitForMethod(t, msgs, "app:ready", 10*time.Second)
 	ollamaPort := waitProxyReady(t, stdin, msgs, 15*time.Second)
 	lmstudioPort := waitLMStudioProxyReady(t, stdin, msgs, 15*time.Second)
+	llamacppPort := waitLlamaCppProxyReady(t, stdin, msgs, 15*time.Second)
 
 	type proxyCase struct {
 		name      string
@@ -70,6 +72,7 @@ func TestStrictModelRoutingAcrossProcesses(t *testing.T) {
 	cases := []proxyCase{
 		{name: "ollama", rpcPrefix: "proxy", path: "/api/chat", port: ollamaPort},
 		{name: "lmstudio", rpcPrefix: "lmstudio-proxy", path: "/v1/chat/completions", port: lmstudioPort},
+		{name: "llamacpp", rpcPrefix: "llamacpp-proxy", path: "/v1/chat/completions", port: llamacppPort},
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
 	t.Cleanup(client.CloseIdleConnections)

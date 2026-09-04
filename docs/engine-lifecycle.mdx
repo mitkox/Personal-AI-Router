@@ -6,8 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 # Managing Engines in NVIDIA Personal AI Router
 
 An **engine** is the local inference runtime Personal AI Router (PAIR) uses to
-run models. Today that means Ollama or LM Studio on a given machine. PAIR can
-install and run those engines for you, or work with a copy you already have.
+run models. Today that means Ollama, LM Studio, or llama.cpp on a given
+machine. PAIR can install and run Ollama and LM Studio for you, adopt a copy
+you already have, or adopt a user-built llama-server for the llama.cpp engine.
 This page explains what you can expect when you install, start, stop, update, or
 remove an engine.
 
@@ -74,9 +75,9 @@ When you install an engine, consider the following:
   configures it, and owns it from then on.
 - A successful install **starts the engine** as part of the same flow, so you
   normally do not need a separate start step right after install.
-- If Ollama or LM Studio is already running on the machine, PAIR can **adopt**
-  that install instead of downloading another copy. Adoption helps when the
-  usual engine port is already in use.
+- If Ollama, LM Studio, or llama-server is already running on the machine, PAIR
+  can **adopt** that install instead of downloading another copy. Adoption helps
+  when the usual engine port is already in use.
 
 To download models:
 
@@ -203,7 +204,42 @@ uninstalls every model at once.
 
 Applications need a **running** engine plus an available model. Copy API URLs
 from **Endpoints** after an engine is running. Do not assume a fixed port such as
-`11434` or `1234`.
+`11434`, `1234`, or `8080`.
+
+## llama.cpp (Adopt-Only, Linux)
+
+The llama.cpp engine drives a user-built `llama-server` in router mode
+(`--models-dir`), exposing every GGUF file in one directory as an
+OpenAI-compatible model list. It is the path for GPUs without an Ollama or LM
+Studio runtime — notably AMD APUs such as Strix Halo (Ryzen AI Max, gfx1151)
+via ROCm. Unlike Ollama and LM Studio, PAIR does not install llama.cpp: it
+adopts the binary you built.
+
+What to expect:
+
+- **Build it first.** Build llama.cpp with your backend (e.g. `-DGGML_HIP=ON
+  -DAMDGPU_TARGETS=gfx1151` for ROCm on Strix Halo) and note the
+  `llama-server` path. PAIR looks in `{install_dir}/bin/llama-server`,
+  `/usr/local/bin/llama-server`, `~/llama.cpp/build/bin/llama-server`, and
+  `~/dev/llama.cpp/build/bin/llama-server`.
+- **Place GGUFs in one directory.** PAIR serves `~/.llama.cpp/models` by
+  default (created on first start); a per-user manifest override can point
+  `--models-dir` elsewhere. Models appear by file alias (`model.gguf` serves
+  as `model`).
+- **PAIR pins the ROCm device.** The managed server starts with
+  `--device ROCm0` plus `--embeddings`, on port `8080` by default with routing
+  through `llamacpp-proxy`.
+- **No Add model.** There is no pull action: copy GGUF files into the models
+  directory yourself, then restart the engine so the router picks them up
+  (the router scans at startup). **Load** (`/models/load`) and **Eject**
+  (`/models/unload`) work per model; the first request to a cold model also
+  loads it on demand. **Delete** removes the GGUF file and restarts the server,
+  so it asks for confirmation first.
+- **Environment flows through.** PAIR spawns `llama-server` inheriting its own
+  environment, so `HSA_OVERRIDE_GFX_VERSION`, `HSA_ENABLE_SDMA`, or
+  `OLLAMA_VULKAN`-style workarounds set where PAIR runs also apply to the
+  managed server. The Vulkan fallback (`--device Vulkan0` via override) is the
+  escape hatch when the bundled HIP backend misbehaves on new silicon.
 
 ## Tips
 

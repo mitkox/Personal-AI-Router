@@ -98,7 +98,7 @@ func (e *Executor) dispatchAction(ctx context.Context, st *engineState, engine, 
 	// actions hit the engine's loopback control API and therefore require
 	// it to be up.
 	if act.RemovePath != nil {
-		return e.runRemovePathAction(ctx, st, act, params)
+		return e.runRemovePathAction(ctx, st, engine, act, params)
 	}
 	if len(act.Cmd) > 0 {
 		return e.runCmdAction(ctx, st, act, port, params)
@@ -126,7 +126,9 @@ func (e *Executor) dispatchAction(ctx context.Context, st *engineState, engine, 
 	}
 	req.Header.Set(engineIdentityProbeHeader, "1")
 	client := e.client
-	if engine == "ollama" && action == "run_model" && e.ollamaLoadClient != nil {
+	if e.ollamaLoadClient != nil &&
+		((engine == "ollama" && action == "run_model") ||
+			(engine == "llamacpp" && action == "load_model")) {
 		client = e.ollamaLoadClient
 	}
 	resp, err := client.Do(req)
@@ -150,13 +152,13 @@ func (e *Executor) dispatchAction(ctx context.Context, st *engineState, engine, 
 
 // runRemovePathAction resolves templated path/root placeholders and deletes
 // the target when it stays under the declared root.
-func (e *Executor) runRemovePathAction(ctx context.Context, st *engineState, act Action, params json.RawMessage) (json.RawMessage, error) {
+func (e *Executor) runRemovePathAction(ctx context.Context, st *engineState, engine string, act Action, params json.RawMessage) (json.RawMessage, error) {
 	if act.RemovePath == nil {
 		return nil, fmt.Errorf("remove_path action missing spec")
 	}
 	vars := map[string]string{
 		"install_dir": st.installDir,
-		"models_dir":  lmstudioModelsDir(),
+		"models_dir":  engineModelsDir(engine),
 	}
 	if len(params) > 0 {
 		var pm map[string]any
@@ -204,6 +206,15 @@ func (e *Executor) runRemovePathAction(ctx context.Context, st *engineState, act
 		return nil, err
 	}
 	target = expandPath(target)
+	if engine == "llamacpp" {
+		// Router model ids strip the .gguf suffix ("test-model" for
+		// test-model.gguf), so the on-disk file needs the suffix restored.
+		if _, statErr := os.Stat(target); os.IsNotExist(statErr) {
+			if _, ggufErr := os.Stat(target + ".gguf"); ggufErr == nil {
+				target += ".gguf"
+			}
+		}
+	}
 	if err := safeRemoveUnderRoot(root, target); err != nil {
 		return nil, err
 	}

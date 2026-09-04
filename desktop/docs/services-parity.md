@@ -193,12 +193,15 @@ from node-scanner enrichment and is attributed per engine.
 Personal AI Router uses:
 
 - `list_models`;
-- `pull_model`;
+- `pull_model` (Ollama, LM Studio);
 - Ollama `run_model`, `unload_model` (`keep_alive: 0`), and `delete_model`;
-- LM Studio `load_model`, `unload_model`, and `delete_model` (`remove_path`).
+- LM Studio `load_model`, `unload_model`, and `delete_model` (`remove_path`);
+- llama.cpp `load_model` (`/models/load`), `unload_model` (`/models/unload`),
+  and `delete_model` (`remove_path`).
 
-Both engines expose Load, Eject, and Delete in the model manager when the
-backend action exists. Keep-alive / expiry controls remain unsupported.
+All three engines expose Load, Eject, and Delete in the model manager when the
+backend action exists. llama.cpp has no pull action: models are placed as GGUF
+files in its models directory by hand. Keep-alive / expiry controls remain unsupported.
 
 LM Studio's `delete_model` declares `restart_after`, so the engine manager
 restarts a running LM Studio once the files are removed — its `/v1/models` is
@@ -210,9 +213,11 @@ restart is entirely backend-owned: PAIR sends the same `deleteModel` command as
 for any other engine and never issues `engine:restart` itself, so the bundled
 `nvpair` terminal UI and a remote peer's deletion get the same behavior.
 
-**This is LM Studio only.** Ollama reflects a deletion immediately, so its
+**This is LM Studio and llama.cpp only.** Ollama reflects a deletion immediately, so its
 manifest omits `restart_after` and its capability entry omits
 `restartsOnModelDelete`: no bounce, no confirmation, no interrupted inference.
+llama.cpp in router mode scans `--models-dir` at startup with no rescan, so it
+bounces and confirms exactly like LM Studio.
 Those two facts have to stay in step across a Go manifest and a TypeScript
 constant, which nothing in either type system enforces — so
 `tests/modular/delete-model-restart.test.ts` reads the shipped manifests and

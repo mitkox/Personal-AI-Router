@@ -56,11 +56,18 @@ export function getWelcomeInstallOutcome(
     return 'pending'
 }
 
+/** Map an engine-manager engine id onto our `EngineType` spelling (`lmstudio` -> `lm-studio`, `llamacpp` -> `llama-cpp`). */
+function normalizeManagerEngineName(engineType: string | undefined): string | undefined {
+    if (engineType === 'lmstudio') return 'lm-studio'
+    if (engineType === 'llamacpp') return 'llama-cpp'
+    return engineType
+}
+
 export function targetForInstallError(
     error: ServiceError,
     targets: readonly EngineType[]
 ): EngineType | null {
-    const explicit = error.engineType === 'lmstudio' ? 'lm-studio' : error.engineType
+    const explicit = normalizeManagerEngineName(error.engineType)
     if (explicit && targets.includes(explicit as EngineType)) return explicit as EngineType
 
     const text = `${error.id} ${error.message}`.toLowerCase()
@@ -82,7 +89,7 @@ export function isTargetInstallError(
     targets: readonly EngineType[]
 ): boolean {
     if (error.nodeId && error.nodeId !== nodeId) return false
-    const errorEngine = error.engineType === 'lmstudio' ? 'lm-studio' : error.engineType
+    const errorEngine = normalizeManagerEngineName(error.engineType)
     if (errorEngine && !targets.includes(errorEngine as EngineType)) return false
     return (
         error.operation === 'install' ||

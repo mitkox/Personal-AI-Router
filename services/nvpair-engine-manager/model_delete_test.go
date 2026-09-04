@@ -243,21 +243,28 @@ func TestBundledManifestsRestartOnlyLMStudio(t *testing.T) {
 	if err := reg.LoadFS(bundledManifests, "manifests"); err != nil {
 		t.Fatalf("LoadFS bundled: %v", err)
 	}
+	// Engines whose delete_model justifiably declares restart_after: LM Studio
+	// serves its model list from a startup-built index, and llama-server in
+	// router mode scans --models-dir at startup with no rescan operation.
+	allowed := map[string]bool{"lmstudio": true, "llamacpp": true}
 	for engine, m := range reg.engines {
 		for name, act := range m.Actions {
 			if !act.RestartAfter {
 				continue
 			}
-			if engine != "lmstudio" {
-				t.Errorf("engine %q action %q declares restart_after; only lmstudio needs one", engine, name)
+			if !allowed[engine] {
+				t.Errorf("engine %q action %q declares restart_after; only lmstudio and llamacpp need one", engine, name)
 			}
 			if name != "delete_model" {
-				t.Errorf("lmstudio action %q declares restart_after; only delete_model needs one", name)
+				t.Errorf("%s action %q declares restart_after; only delete_model needs one", engine, name)
 			}
 		}
 	}
 	if !reg.engines["lmstudio"].Actions["delete_model"].RestartAfter {
 		t.Fatal("lmstudio delete_model lost restart_after; a deleted model would keep being served")
+	}
+	if !reg.engines["llamacpp"].Actions["delete_model"].RestartAfter {
+		t.Fatal("llamacpp delete_model lost restart_after; a deleted model would keep being served")
 	}
 	if reg.engines["ollama"].Actions["delete_model"].RestartAfter {
 		t.Fatal("ollama delete_model declares restart_after; Ollama reflects deletions without a bounce")

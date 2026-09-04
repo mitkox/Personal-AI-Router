@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Bill of Materials — Third-Party Go Libraries
 
-Scope: dependencies linked into the thirteen shipped binaries (`ollama-proxy`, `lmstudio-proxy`, `nvpair-node-info`, `nvpair-node-scanner`, `nvpair-manual-nodes`, `nvpair-workload-manager`, `nvpair-errors`, `nvpair-node-settings`, `nvpair-cluster-manager`, `nvpair-ui-broker`, `nvpair-engine-manager`, `nvpair-job-scheduler`, `nvpair-tui`). The local modules `nvpair-shared` and `eapnoob` (the EAP-NOOB implementation under `eap-noob/`, linked by `nvpair-cluster-manager`) are first-party and excluded. The `tests/`, `mdns-test/`, and `broker-test-driver/` modules are development-only and excluded.
+Scope: dependencies linked into the fourteen shipped binaries (`ollama-proxy`, `lmstudio-proxy`, `llamacpp-proxy`, `nvpair-node-info`, `nvpair-node-scanner`, `nvpair-manual-nodes`, `nvpair-workload-manager`, `nvpair-errors`, `nvpair-node-settings`, `nvpair-cluster-manager`, `nvpair-ui-broker`, `nvpair-engine-manager`, `nvpair-job-scheduler`, `nvpair-tui`). The local modules `nvpair-shared` and `eapnoob` (the EAP-NOOB implementation under `eap-noob/`, linked by `nvpair-cluster-manager`) are first-party and excluded. The `tests/`, `mdns-test/`, and `broker-test-driver/` modules are development-only and excluded.
 
 `nvpair-tui` is the only component that links the Bubble Tea terminal-UI stack (`charmbracelet/bubbletea` + `lipgloss` + `bubbles`); its transitive `charmbracelet/*`, `muesli/*`, `mattn/*`, `clipperhouse/*`, `atotto/clipboard`, `aymanbagabas/go-osc52`, `lucasb-eyer/go-colorful`, `erikgeiser/coninput`, and `xo/terminfo` dependencies are unique to it.
 

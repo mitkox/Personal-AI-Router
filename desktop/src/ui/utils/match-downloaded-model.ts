@@ -38,7 +38,8 @@ const matchHfPullKeyOrName: DownloadedMatcher = (hubEntry, d) => {
 
 const MATCHERS: Partial<Record<EngineType, DownloadedMatcher>> = {
     ollama: matchOllama,
-    'lm-studio': matchHfPullKeyOrName
+    'lm-studio': matchHfPullKeyOrName,
+    'llama-cpp': matchHfPullKeyOrName
 }
 
 export function isHubEntryDownloaded(
